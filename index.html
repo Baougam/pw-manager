@@ -144,8 +144,12 @@
     <div><label>Zielpreis €</label>
       <input id="newTarget" inputmode="decimal" placeholder="29.90"></div>
   </div>
-  <label>Nur dieser Händler (optional, für Geizhals-Links – z.B. "amazon")</label>
-  <input id="newMerchant" placeholder="leer = günstigster Händler">
+  <div class="grid2">
+    <div><label>Nur dieser Händler (optional, Geizhals)</label>
+      <input id="newMerchant" placeholder="leer = günstigster"></div>
+    <div><label>Dauerrabatt % (Coupon)</label>
+      <input id="newDiscount" inputmode="decimal" placeholder="z.B. 30"></div>
+  </div>
   <button class="primary" id="addBtn">Hinzufügen</button>
 </div>
 
@@ -230,7 +234,12 @@ function render() {
     const h = hist[it.url] || {};
     const color = h.status === "ok" ? "var(--accent)"
                 : h.status ? "var(--red)" : "var(--line)";
-    const price = h.price != null ? h.price.toFixed(2) + " " + (h.currency || "") : "–";
+    const disc = parseFloat(it.discount) || 0;
+    const effVal = h.price != null ? h.price * (1 - disc / 100) : null;
+    const price = effVal != null
+      ? (disc ? effVal.toFixed(2) + " " + (h.currency || "")
+              : h.price.toFixed(2) + " " + (h.currency || ""))
+      : "–";
     const row = document.createElement("div");
     row.className = "item";
     row.innerHTML = `
@@ -243,13 +252,24 @@ function render() {
                  ? `&nbsp;Händler <input class="target-in merchant-in" style="width:92px"
                     value="${it.merchant || ""}" placeholder="alle">`
                  : ""}
+               &nbsp;−<input class="target-in discount-in" style="width:44px"
+                    inputmode="decimal" value="${it.discount ?? ""}" placeholder="0">%
                · ${h.checked || "noch nie geprüft"}</small>
       </span>
-      <span class="price">${price}<small>${h.price != null && it.target != null
-          ? (h.price <= it.target ? "Ziel erreicht 🎉" : "über Ziel") : ""}</small></span>
+      <span class="price">${price}<small>${disc && h.price != null
+            ? "effektiv (−" + disc + "%, Basis " + h.price.toFixed(2) + ")"
+            : ""}${effVal != null && it.target != null
+          ? (disc ? " · " : "") + (effVal <= it.target ? "Ziel erreicht 🎉" : "über Ziel") : ""}</small></span>
       <button class="del" title="Entfernen">✕</button>`;
     row.querySelector(".del").onclick = () => {
       items.splice(i, 1); setDirty(true); render();
+    };
+    const dIn = row.querySelector(".discount-in");
+    if (dIn) dIn.oninput = ev => {
+      const v = ev.target.value.trim().replace(",", ".");
+      if (v === "") delete it.discount;
+      else if (!isNaN(parseFloat(v))) it.discount = parseFloat(v);
+      setDirty(true);
     };
     const mIn = row.querySelector(".merchant-in");
     if (mIn) mIn.oninput = ev => {
@@ -278,6 +298,9 @@ function addItem() {
   if (t && !isNaN(parseFloat(t))) it.target = parseFloat(t);
   const mch = $("newMerchant").value.trim();
   if (mch) it.merchant = mch.toLowerCase();
+  const dc = $("newDiscount").value.trim().replace(",", ".");
+  if (dc && !isNaN(parseFloat(dc))) it.discount = parseFloat(dc);
+  $("newDiscount").value = "";
   items.push(it);
   $("newUrl").value = $("newLabel").value = $("newTarget").value = "";
   $("newMerchant").value = "";
