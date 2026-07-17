@@ -129,6 +129,10 @@
   <label>Fine-grained Token (nur dieses Repo · Contents: Read &amp; write)</label>
   <input id="token" type="password" placeholder="github_pat_…">
   <button class="primary" id="connectBtn">Verbinden</button>
+  <button class="btn-check" id="diagBtn" style="margin-top:10px;margin-bottom:0">🔍 Diagnose ausführen</button>
+  <pre id="diagOut" style="display:none;white-space:pre-wrap;font-size:12.5px;
+       background:var(--bg);border-radius:12px;padding:12px;margin-top:10px;
+       color:var(--sub);"></pre>
 </div>
 
 <div class="card hidden" id="addCard">
@@ -330,6 +334,55 @@ $("saveBtn").onclick = save;
 $("gear").onclick = () => $("setup").classList.toggle("hidden");
 $("reload").onclick = loadAll;
 $("checkNow").onclick = () => runCheckNow(false);
+$("diagBtn").onclick = diagnose;
+
+async function diagnose() {
+  const out = $("diagOut");
+  out.style.display = "block";
+  out.textContent = "Diagnose läuft …\n";
+  const log = s => { out.textContent += s + "\n"; };
+  const c = cfg();
+  log(`Repo: ${c.owner}/${c.repo}`);
+  log(`Token beginnt mit: ${c.token.slice(0, 15)}…  Länge: ${c.token.length}`);
+  try {
+    // 1) repo reachable with this token?
+    let r = await fetch(`https://api.github.com/repos/${c.owner}/${c.repo}`,
+                        { headers: gh() });
+    log(`\n[1] Repo-Zugriff: HTTP ${r.status} ${r.ok ? "✓" : "✗"}`);
+    if (!r.ok) { log("→ Token ungültig oder Repo-Name falsch. Hier ist das Problem."); return; }
+
+    // 2) can we list workflows? (needs Actions: read)
+    r = await fetch(`https://api.github.com/repos/${c.owner}/${c.repo}/actions/workflows`,
+                    { headers: gh() });
+    log(`[2] Workflows lesen: HTTP ${r.status} ${r.ok ? "✓" : "✗"}`);
+    if (!r.ok) {
+      log("→ Dem Token fehlt 'Actions'. Token bearbeiten: Permissions → Actions → Read and write.");
+      return;
+    }
+    const wfs = (await r.json()).workflows || [];
+    wfs.forEach(w => log(`    · ${w.name}  (${w.path})  [${w.state}]`));
+    if (!wfs.length) { log("→ Keine Workflows gefunden – liegt die yml unter .github/workflows/?"); return; }
+    const wf = wfs.find(w => /pricewatch/i.test(w.path) || /pricewatcher/i.test(w.name)) || wfs[0];
+    log(`    → verwende: ${wf.path} (id ${wf.id})`);
+
+    // 3) dispatch (needs Actions: write)
+    r = await fetch(`https://api.github.com/repos/${c.owner}/${c.repo}/actions/workflows/${wf.id}/dispatches`,
+      { method: "POST", headers: gh(), body: JSON.stringify({ ref: "main" }) });
+    log(`[3] Workflow starten: HTTP ${r.status} ${r.status === 204 ? "✓ GESTARTET!" : "✗"}`);
+    if (r.status === 204) {
+      log("\n✅ Alles funktioniert – der Check läuft jetzt (siehe Actions-Tab).");
+    } else {
+      const body = await r.text();
+      log(`    Antwort: ${body.slice(0, 300)}`);
+      if (r.status === 403)
+        log("→ Token hat 'Actions' nur als Read. Auf 'Read and write' stellen.");
+      else if (r.status === 422)
+        log("→ Branch-Problem: Heißt dein Branch wirklich 'main'? (Code-Tab, links oben)");
+    }
+  } catch (e) {
+    log("Netzwerkfehler: " + e.message);
+  }
+}
 $("newUrl").addEventListener("keydown", e => { if (e.key === "Enter") addItem(); });
 
 const CHECK_HOURS = [8, 13, 19]; // Berlin time, matches the cron schedule
@@ -421,11 +474,20 @@ async function updateCheckInfo() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  // share links can pre-fill owner & repo: .../?owner=Baougam&repo=pricewatcher
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("owner")) localStorage.setItem("pw_owner", qs.get("owner"));
+  if (qs.get("repo")) localStorage.setItem("pw_repo", qs.get("repo"));
+
   $("owner").value = localStorage.getItem("pw_owner") || "";
   $("repo").value = localStorage.getItem("pw_repo") || "pricewatcher";
   $("token").value = localStorage.getItem("pw_token") || "";
   if ($("owner").value && $("token").value) loadAll();
-  else $("setup").classList.remove("hidden");
+  else {
+    $("setup").classList.remove("hidden");
+    if ($("owner").value && !$("token").value)
+      toast("Fast fertig – nur noch das Token einfügen");
+  }
 });
 </script>
 </body>
