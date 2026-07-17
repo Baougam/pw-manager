@@ -109,6 +109,7 @@
 <header>
   <div class="logo">€</div>
   <h1>PriceWatcher</h1>
+  <button class="iconbtn" id="reload" title="Preise neu laden">↻</button>
   <button class="iconbtn" id="gear" title="Verbindung">⚙︎</button>
 </header>
 
@@ -137,6 +138,7 @@
 
 <div class="card hidden" id="listCard">
   <h2 id="listTitle">Deine Artikel</h2>
+  <div id="checkInfo" style="font-size:13px;color:var(--sub);margin:-6px 0 10px;"></div>
   <div id="list"></div>
 </div>
 
@@ -198,6 +200,7 @@ async function loadAll() {
     $("addCard").classList.remove("hidden");
     $("listCard").classList.remove("hidden");
     toast(`${items.length} Artikel geladen ✓`);
+    updateCheckInfo();
   } catch (e) { toast(e.message, true); $("setup").classList.remove("hidden"); }
 }
 
@@ -254,6 +257,19 @@ function addItem() {
   toast("Hinzugefügt – unten speichern");
 }
 
+async function triggerCheck() {
+  const url = `https://api.github.com/repos/${cfg().owner}/${cfg().repo}` +
+              `/actions/workflows/pricewatch.yml/dispatches`;
+  const r = await fetch(url, {
+    method: "POST", headers: gh(),
+    body: JSON.stringify({ ref: "main" }),
+  });
+  if (r.status === 204) return true;
+  if (r.status === 403 || r.status === 404)
+    throw new Error("Token braucht zusätzlich die Berechtigung 'Actions: Read and write'.");
+  throw new Error("Workflow-Start: HTTP " + r.status);
+}
+
 async function save() {
   try {
     $("saveBtn").disabled = true;
@@ -267,7 +283,15 @@ async function save() {
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || "HTTP " + r.status);
     itemsSha = (await r.json()).content.sha;
     setDirty(false);
-    toast("Gespeichert ✓ – gilt ab dem nächsten Check");
+    try {
+      await triggerCheck();
+      toast("Gespeichert ✓ – Check läuft, Preise in ~3 Min per ↻");
+      $("checkInfo").textContent =
+        `⏳ Check läuft gerade … danach ↻ tippen · Nächster geplanter ${nextCheckText()}`;
+      setTimeout(updateCheckInfo, 30000);
+    } catch (e2) {
+      toast("Gespeichert ✓ (Auto-Check: " + e2.message + ")", true);
+    }
   } catch (e) { toast("Speichern fehlgeschlagen: " + e.message, true); }
   finally { $("saveBtn").disabled = false; }
 }
@@ -285,7 +309,44 @@ $("connectBtn").onclick = connect;
 $("addBtn").onclick = addItem;
 $("saveBtn").onclick = save;
 $("gear").onclick = () => $("setup").classList.toggle("hidden");
+$("reload").onclick = loadAll;
 $("newUrl").addEventListener("keydown", e => { if (e.key === "Enter") addItem(); });
+
+const CHECK_HOURS = [8, 13, 19]; // Berlin time, matches the cron schedule
+
+function berlinNow() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+}
+function nextCheckText() {
+  const now = berlinNow();
+  const h = now.getHours() + now.getMinutes() / 60;
+  const next = CHECK_HOURS.find(x => x > h);
+  if (next != null) return `heute um ${next}:00`;
+  return `morgen um ${CHECK_HOURS[0]}:00`;
+}
+async function updateCheckInfo() {
+  let last = "";
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${cfg().owner}/${cfg().repo}/actions/runs?per_page=1`,
+      { headers: gh() });
+    if (r.ok) {
+      const run = (await r.json()).workflow_runs?.[0];
+      if (run) {
+        if (run.status !== "completed") {
+          $("checkInfo").textContent =
+            `⏳ Check läuft gerade … danach ↻ tippen · Nächster geplanter ${nextCheckText()}`;
+          setTimeout(updateCheckInfo, 30000);
+          return;
+        }
+        const t = new Date(run.updated_at).toLocaleTimeString("de-DE",
+          { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+        last = `Letzter Check ${t} ${run.conclusion === "success" ? "✓" : "⚠️"} · `;
+      }
+    }
+  } catch (e) { /* token without Actions permission -> just skip */ }
+  $("checkInfo").textContent = last + `Nächster automatisch ${nextCheckText()}`;
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   $("owner").value = localStorage.getItem("pw_owner") || "";
