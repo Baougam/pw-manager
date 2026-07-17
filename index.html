@@ -249,7 +249,7 @@ function render() {
       <span class="dot" style="background:${color}"></span>
       <span class="meta">
         <a href="${it.url}" target="_blank" rel="noopener">${it.label || it.url}</a>
-        <small>Wunschpreis unter: <input class="target-in" inputmode="decimal"
+        <small>Wunschpreis <input class="target-in" inputmode="decimal"
                value="${it.target ?? ""}" placeholder="–">
                ${(it.merchant || /geizhals/i.test(it.url))
                  ? `&nbsp;Händler <input class="target-in merchant-in" style="width:92px"
