@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PriceWatcher</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0e0f11">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg:#f6f7f8; --card:#ffffff; --ink:#16181c; --sub:#6b7280;
+    --line:#e7e9ec; --accent:#16a34a; --accent-soft:#e8f7ee;
+    --red:#dc2626; --red-soft:#fdecec; --radius:16px;
+    --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0e0f11; --card:#17191d; --ink:#eceef1; --sub:#9aa1ab;
+      --line:#262a30; --accent:#22c55e; --accent-soft:#123420;
+      --red:#f87171; --red-soft:#3a1a1a;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg); color:var(--ink);
+    max-width:680px; margin:0 auto; padding:20px 16px 110px;
+  }
+  header { display:flex; align-items:center; gap:12px; margin:6px 0 22px; }
+  .logo { width:38px; height:38px; border-radius:12px; background:var(--accent);
+          display:grid; place-items:center; color:#fff; font-weight:800;
+          font-size:19px; box-shadow:var(--shadow); }
+  h1 { font-size:20px; font-weight:700; letter-spacing:-.02em; flex:1; }
+  .iconbtn { border:0; background:var(--card); color:var(--sub); width:38px; height:38px;
+             border-radius:12px; cursor:pointer; font-size:17px; box-shadow:var(--shadow); }
+
+  .card { background:var(--card); border-radius:var(--radius);
+          box-shadow:var(--shadow); padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:14px; font-weight:600; color:var(--sub);
+             text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px; }
+
+  label { display:block; font-size:13px; color:var(--sub); margin:12px 0 6px; }
+  input {
+    width:100%; padding:12px 14px; font-size:16px; color:var(--ink);
+    background:var(--bg); border:1.5px solid var(--line); border-radius:12px;
+    outline:none; transition:border-color .15s;
+  }
+  input:focus { border-color:var(--accent); }
+  .grid2 { display:grid; grid-template-columns:1fr 130px; gap:10px; }
+
+  button.primary {
+    width:100%; margin-top:16px; padding:14px; font-size:16px; font-weight:600;
+    color:#fff; background:var(--accent); border:0; border-radius:12px;
+    cursor:pointer; transition:transform .08s, filter .15s;
+  }
+  button.primary:active { transform:scale(.985); }
+  button.primary:disabled { filter:grayscale(.6) opacity(.6); cursor:default; }
+
+  /* item rows */
+  .item { display:flex; align-items:center; gap:12px; padding:14px 4px;
+          border-bottom:1px solid var(--line); }
+  .item:last-child { border-bottom:0; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+  .meta { flex:1; min-width:0; }
+  .meta a { color:var(--ink); font-weight:600; font-size:15px; text-decoration:none;
+            display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .meta small { color:var(--sub); font-size:12.5px; display:flex; align-items:center;
+                gap:6px; margin-top:3px; }
+  .target-in { width:74px; padding:3px 8px; font-size:12.5px; border-radius:8px;
+               border:1.5px solid var(--line); background:transparent; color:var(--sub); }
+  .price { font-weight:700; font-size:15px; white-space:nowrap; text-align:right; }
+  .price small { display:block; font-weight:500; color:var(--sub); font-size:11.5px; }
+  .del { border:0; background:transparent; color:var(--sub); font-size:17px;
+         cursor:pointer; padding:8px; border-radius:10px; }
+  .del:hover { background:var(--red-soft); color:var(--red); }
+  .empty { color:var(--sub); font-size:14.5px; text-align:center; padding:22px 0; }
+
+  /* sticky save bar */
+  #savebar {
+    position:fixed; left:0; right:0; bottom:0; padding:12px 16px
+    calc(12px + env(safe-area-inset-bottom));
+    background:var(--card); box-shadow:0 -6px 24px rgba(0,0,0,.12);
+    transform:translateY(110%); transition:transform .25s ease;
+  }
+  #savebar.show { transform:translateY(0); }
+  #savebar .inner { max-width:680px; margin:0 auto; display:flex; gap:10px; align-items:center; }
+  #savebar span { flex:1; font-size:14px; color:var(--sub); }
+  #savebar button { padding:12px 22px; font-size:15px; font-weight:600; color:#fff;
+                    background:var(--accent); border:0; border-radius:12px; cursor:pointer; }
+
+  /* toast */
+  #toast {
+    position:fixed; top:14px; left:50%; transform:translate(-50%,-150%);
+    background:var(--ink); color:var(--bg); padding:11px 18px; border-radius:99px;
+    font-size:14px; font-weight:500; box-shadow:var(--shadow);
+    transition:transform .3s ease; z-index:50; max-width:90vw; text-align:center;
+  }
+  #toast.show { transform:translate(-50%,0); }
+  #toast.err { background:var(--red); color:#fff; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">€</div>
+  <h1>PriceWatcher</h1>
+  <button class="iconbtn" id="gear" title="Verbindung">⚙︎</button>
+</header>
+
+<div class="card hidden" id="setup">
+  <h2>Mit GitHub verbinden</h2>
+  <label>GitHub-Benutzername</label>
+  <input id="owner" placeholder="z.B. Baougam" autocomplete="off">
+  <label>Repository</label>
+  <input id="repo" value="pricewatcher" autocomplete="off">
+  <label>Fine-grained Token (nur dieses Repo · Contents: Read &amp; write)</label>
+  <input id="token" type="password" placeholder="github_pat_…">
+  <button class="primary" id="connectBtn">Verbinden</button>
+</div>
+
+<div class="card hidden" id="addCard">
+  <h2>Artikel hinzufügen</h2>
+  <input id="newUrl" placeholder="Produktlink einfügen (https://…)" inputmode="url">
+  <div class="grid2">
+    <div><label>Name (optional)</label>
+      <input id="newLabel" placeholder="z.B. Zara Leinenhose L"></div>
+    <div><label>Zielpreis €</label>
+      <input id="newTarget" inputmode="decimal" placeholder="29.90"></div>
+  </div>
+  <button class="primary" id="addBtn">Hinzufügen</button>
+</div>
+
+<div class="card hidden" id="listCard">
+  <h2 id="listTitle">Deine Artikel</h2>
+  <div id="list"></div>
+</div>
+
+<div id="savebar"><div class="inner">
+  <span id="dirtyMsg">Ungespeicherte Änderungen</span>
+  <button id="saveBtn">Speichern</button>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+let items = [], hist = {}, itemsSha = null, dirty = false;
+
+const $ = id => document.getElementById(id);
+const api = p => `https://api.github.com/repos/${cfg().owner}/${cfg().repo}/contents/${p}`;
+const cfg = () => ({ owner: $("owner").value.trim(),
+                     repo: $("repo").value.trim(),
+                     token: $("token").value.trim() });
+const gh = () => ({ "Authorization": "Bearer " + cfg().token,
+                    "Accept": "application/vnd.github+json" });
+const dec = b => new TextDecoder().decode(
+  Uint8Array.from(atob(b.replace(/\n/g, "")), c => c.charCodeAt(0)));
+const enc = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+
+let toastTimer;
+function toast(msg, err) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = err ? "show err" : "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ""; }, 3200);
+}
+function setDirty(on) {
+  dirty = on;
+  $("savebar").classList.toggle("show", on);
+}
+
+async function loadAll() {
+  try {
+    toast("Lade…");
+    const r = await fetch(api("items.json"), { headers: gh() });
+    if (r.status === 401 || r.status === 403)
+      throw new Error("Token ungültig oder ohne Rechte.");
+    if (r.status === 404)
+      throw new Error("items.json nicht gefunden – Name/Repo prüfen.");
+    if (!r.ok) throw new Error("GitHub: HTTP " + r.status);
+    const j = await r.json();
+    itemsSha = j.sha;
+    items = JSON.parse(dec(j.content)).items || [];
+
+    hist = {};
+    const h = await fetch(api("history.json"), { headers: gh() });
+    if (h.ok) { try { hist = JSON.parse(dec((await h.json()).content)); } catch (e) {} }
+
+    setDirty(false);
+    render();
+    $("setup").classList.add("hidden");
+    $("addCard").classList.remove("hidden");
+    $("listCard").classList.remove("hidden");
+    toast(`${items.length} Artikel geladen ✓`);
+  } catch (e) { toast(e.message, true); $("setup").classList.remove("hidden"); }
+}
+
+function render() {
+  const box = $("list");
+  box.innerHTML = "";
+  $("listTitle").textContent = `Deine Artikel (${items.length})`;
+  if (!items.length) {
+    box.innerHTML = `<div class="empty">Noch nichts getrackt.<br>Füge oben deinen ersten Link hinzu ✨</div>`;
+    return;
+  }
+  items.forEach((it, i) => {
+    const h = hist[it.url] || {};
+    const color = h.status === "ok" ? "var(--accent)"
+                : h.status ? "var(--red)" : "var(--line)";
+    const price = h.price != null ? h.price.toFixed(2) + " " + (h.currency || "") : "–";
+    const row = document.createElement("div");
+    row.className = "item";
+    row.innerHTML = `
+      <span class="dot" style="background:${color}"></span>
+      <span class="meta">
+        <a href="${it.url}" target="_blank" rel="noopener">${it.label || it.url}</a>
+        <small>Ziel <input class="target-in" inputmode="decimal"
+               value="${it.target ?? ""}" placeholder="–">
+               · ${h.checked || "noch nie geprüft"}</small>
+      </span>
+      <span class="price">${price}<small>${h.price != null && it.target != null
+          ? (h.price <= it.target ? "Ziel erreicht 🎉" : "über Ziel") : ""}</small></span>
+      <button class="del" title="Entfernen">✕</button>`;
+    row.querySelector(".del").onclick = () => {
+      items.splice(i, 1); setDirty(true); render();
+    };
+    row.querySelector(".target-in").oninput = ev => {
+      const v = ev.target.value.trim().replace(",", ".");
+      if (v === "") delete it.target;
+      else if (!isNaN(parseFloat(v))) it.target = parseFloat(v);
+      setDirty(true);
+    };
+    box.appendChild(row);
+  });
+}
+
+function addItem() {
+  const url = $("newUrl").value.trim();
+  if (!/^https?:\/\//.test(url)) { toast("Bitte vollständigen Link einfügen", true); return; }
+  const it = { url };
+  const label = $("newLabel").value.trim();
+  if (label) it.label = label;
+  const t = $("newTarget").value.trim().replace(",", ".");
+  if (t && !isNaN(parseFloat(t))) it.target = parseFloat(t);
+  items.push(it);
+  $("newUrl").value = $("newLabel").value = $("newTarget").value = "";
+  setDirty(true); render();
+  toast("Hinzugefügt – unten speichern");
+}
+
+async function save() {
+  try {
+    $("saveBtn").disabled = true;
+    const body = {
+      message: "Update items via PriceWatcher app",
+      content: enc(JSON.stringify({ items }, null, 2) + "\n"),
+      sha: itemsSha,
+    };
+    const r = await fetch(api("items.json"),
+      { method: "PUT", headers: gh(), body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || "HTTP " + r.status);
+    itemsSha = (await r.json()).content.sha;
+    setDirty(false);
+    toast("Gespeichert ✓ – gilt ab dem nächsten Check");
+  } catch (e) { toast("Speichern fehlgeschlagen: " + e.message, true); }
+  finally { $("saveBtn").disabled = false; }
+}
+
+function connect() {
+  const c = cfg();
+  if (!c.owner || !c.repo || !c.token) { toast("Bitte alle Felder ausfüllen", true); return; }
+  localStorage.setItem("pw_owner", c.owner);
+  localStorage.setItem("pw_repo", c.repo);
+  localStorage.setItem("pw_token", c.token);
+  loadAll();
+}
+
+$("connectBtn").onclick = connect;
+$("addBtn").onclick = addItem;
+$("saveBtn").onclick = save;
+$("gear").onclick = () => $("setup").classList.toggle("hidden");
+$("newUrl").addEventListener("keydown", e => { if (e.key === "Enter") addItem(); });
+
+window.addEventListener("DOMContentLoaded", () => {
+  $("owner").value = localStorage.getItem("pw_owner") || "";
+  $("repo").value = localStorage.getItem("pw_repo") || "pricewatcher";
+  $("token").value = localStorage.getItem("pw_token") || "";
+  if ($("owner").value && $("token").value) loadAll();
+  else $("setup").classList.remove("hidden");
+});
+</script>
+</body>
+</html>
