@@ -218,6 +218,37 @@ function setDirty(on) {
   $("savebar").classList.toggle("show", on);
 }
 
+let wfId = null;
+async function workflowId() {
+  if (wfId) return wfId;
+  const r = await fetch(
+    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}/actions/workflows`,
+    { headers: gh() });
+  if (r.status === 403)
+    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
+  if (!r.ok) throw new Error("Workflows abrufen: HTTP " + r.status);
+  const list = (await r.json()).workflows || [];
+  const wf = list.find(w => /pricewatch/i.test(w.path) || /pricewatcher/i.test(w.name))
+          || list[0];
+  if (!wf) throw new Error("Kein Workflow im Repo gefunden – liegt die yml in .github/workflows/?");
+  wfId = wf.id;
+  return wfId;
+}
+
+async function triggerCheck() {
+  const id = await workflowId();
+  const r = await fetch(
+    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}` +
+    `/actions/workflows/${id}/dispatches`,
+    { method: "POST", headers: gh(), body: JSON.stringify({ ref: "main" }) });
+  if (r.status === 204) return true;
+  if (r.status === 403)
+    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
+  if (r.status === 422)
+    throw new Error("Workflow gefunden, aber Branch 'main' passt nicht.");
+  throw new Error("Workflow-Start: HTTP " + r.status);
+}
+
 async function loadAll() {
   try {
     toast("Lade…");
