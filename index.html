@@ -102,20 +102,6 @@
   #toast.show { transform:translate(-50%,0); }
   #toast.err { background:var(--red); color:#fff; }
   .hidden { display:none; }
-  #modalOv { position:fixed; inset:0; background:rgba(0,0,0,.55);
-             display:none; place-items:center; z-index:100; padding:18px; }
-  #modalOv.show { display:grid; }
-  #modalBox { background:var(--card); border-radius:18px; max-width:420px;
-              width:100%; padding:22px; box-shadow:var(--shadow); }
-  #modalBox h3 { font-size:17px; margin-bottom:10px; }
-  #modalBox p, #modalBox li { font-size:14.5px; color:var(--sub); line-height:1.5; }
-  #modalBox ul { margin:8px 0 0 18px; }
-  #modalBtns { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
-  #modalBtns button, #modalBtns a {
-    padding:12px; font-size:15px; font-weight:600; border:0; border-radius:12px;
-    cursor:pointer; text-align:center; text-decoration:none; }
-  .mb-primary { background:var(--accent); color:#fff; }
-  .mb-ghost { background:var(--bg); color:var(--ink); }
   .btn-check {
     width:100%; padding:12px; font-size:15px; font-weight:600;
     color:var(--accent); background:var(--accent-soft);
@@ -184,12 +170,6 @@
 
 <div id="toast"></div>
 
-<div id="modalOv"><div id="modalBox">
-  <h3 id="modalTitle"></h3>
-  <div id="modalBody"></div>
-  <div id="modalBtns"></div>
-</div></div>
-
 <script>
 "use strict";
 let items = [], hist = {}, itemsSha = null, dirty = false;
@@ -216,37 +196,6 @@ function toast(msg, err) {
 function setDirty(on) {
   dirty = on;
   $("savebar").classList.toggle("show", on);
-}
-
-let wfId = null;
-async function workflowId() {
-  if (wfId) return wfId;
-  const r = await fetch(
-    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}/actions/workflows`,
-    { headers: gh() });
-  if (r.status === 403)
-    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
-  if (!r.ok) throw new Error("Workflows abrufen: HTTP " + r.status);
-  const list = (await r.json()).workflows || [];
-  const wf = list.find(w => /pricewatch/i.test(w.path) || /pricewatcher/i.test(w.name))
-          || list[0];
-  if (!wf) throw new Error("Kein Workflow im Repo gefunden – liegt die yml in .github/workflows/?");
-  wfId = wf.id;
-  return wfId;
-}
-
-async function triggerCheck() {
-  const id = await workflowId();
-  const r = await fetch(
-    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}` +
-    `/actions/workflows/${id}/dispatches`,
-    { method: "POST", headers: gh(), body: JSON.stringify({ ref: "main" }) });
-  if (r.status === 204) return true;
-  if (r.status === 403)
-    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
-  if (r.status === 422)
-    throw new Error("Workflow gefunden, aber Branch 'main' passt nicht.");
-  throw new Error("Workflow-Start: HTTP " + r.status);
 }
 
 async function loadAll() {
@@ -371,46 +320,11 @@ function geizhalsSearch(it) {
 
 const BLOCKER_RE = /amazon\.|idealo\.|zalando\./i;
 
-function showModal(title, bodyHtml, buttons) {
-  $("modalTitle").textContent = title;
-  $("modalBody").innerHTML = bodyHtml;
-  const btns = $("modalBtns");
-  btns.innerHTML = "";
-  buttons.forEach(b => {
-    const el = b.href ? document.createElement("a") : document.createElement("button");
-    el.className = b.primary ? "mb-primary" : "mb-ghost";
-    el.textContent = b.label;
-    if (b.href) { el.href = b.href; el.target = "_blank"; el.rel = "noopener"; }
-    el.onclick = () => { if (b.onclick) b.onclick(); if (!b.keepOpen) closeModal(); };
-    btns.appendChild(el);
-  });
-  $("modalOv").classList.add("show");
-}
-function closeModal() { $("modalOv").classList.remove("show"); }
-$("modalOv").onclick = e => { if (e.target.id === "modalOv") closeModal(); };
-
-function showFailModal(fails) {
-  const list = fails.map(it =>
-    `<li><b>${it.label || it.url.slice(0, 45)}</b><br>` +
-    `<a href="${geizhalsSearch(it)}" target="_blank" rel="noopener" ` +
-    `style="color:var(--accent);font-weight:600">→ Auf Geizhals suchen</a></li>`
-  ).join("");
-  showModal(
-    fails.length === 1 ? "1 Artikel konnte nicht geprüft werden"
-                       : fails.length + " Artikel konnten nicht geprüft werden",
-    "<p>Diese Shops blocken automatische Preis-Checks. Die Lösung: " +
-    "Produkt auf Geizhals suchen und stattdessen den Geizhals-Link tracken " +
-    "– der zeigt sogar den günstigsten Preis aller Händler.</p><ul>" + list + "</ul>",
-    [{ label: "Verstanden", primary: true }]
-  );
-}
-
-function collectNewItem() {
+function addItem() {
   const url = $("newUrl").value.trim();
-  if (!/^https?:\/\//.test(url)) {
-    toast("Bitte vollständigen Link einfügen", true);
-    return null;
-  }
+  if (!/^https?:\/\//.test(url)) { toast("Bitte vollständigen Link einfügen", true); return; }
+  if (BLOCKER_RE.test(url))
+    toast("Hinweis: Dieser Shop blockt meist automatische Checks – Tipp: Produkt auf geizhals.de suchen und den Geizhals-Link tracken.", true);
   const it = { url };
   const label = $("newLabel").value.trim();
   if (label) it.label = label;
@@ -420,39 +334,43 @@ function collectNewItem() {
   if (mch) it.merchant = mch.toLowerCase();
   const dc = $("newDiscount").value.trim().replace(",", ".");
   if (dc && !isNaN(parseFloat(dc))) it.discount = parseFloat(dc);
-  return it;
-}
-
-function commitAdd(it) {
+  $("newDiscount").value = "";
   items.push(it);
   $("newUrl").value = $("newLabel").value = $("newTarget").value = "";
   $("newMerchant").value = "";
-  $("newDiscount").value = "";
-  setDirty(true);
-  render();
+  setDirty(true); render();
   toast("Hinzugefügt – unten speichern");
 }
 
-function addItem() {
-  const it = collectNewItem();
-  if (!it) return;
-  if (BLOCKER_RE.test(it.url)) {
-    showModal(
-      "Dieser Shop blockt Preis-Checks",
-      "<p>Amazon, Idealo & Co. wehren automatische Checks ab – der Artikel " +
-      "würde vermutlich rot bleiben.</p><p><b>Besser:</b> Das Produkt auf " +
-      "Geizhals suchen und den Geizhals-Link tracken – dort siehst du sogar " +
-      "den günstigsten Preis aller Händler.</p>",
-      [
-        { label: "→ Auf Geizhals suchen", primary: true,
-          href: geizhalsSearch(it) },
-        { label: "Trotzdem tracken", onclick: () => commitAdd(it) },
-        { label: "Abbrechen" },
-      ]
-    );
-    return;
-  }
-  commitAdd(it);
+let wfId = null;
+async function workflowId() {
+  if (wfId) return wfId;
+  const r = await fetch(
+    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}/actions/workflows`,
+    { headers: gh() });
+  if (r.status === 403)
+    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
+  if (!r.ok) throw new Error("Workflows abrufen: HTTP " + r.status);
+  const list = (await r.json()).workflows || [];
+  const wf = list.find(w => /pricewatch/i.test(w.path) || /pricewatcher/i.test(w.name))
+          || list[0];
+  if (!wf) throw new Error("Kein Workflow im Repo gefunden – liegt die yml in .github/workflows/?");
+  wfId = wf.id;
+  return wfId;
+}
+
+async function triggerCheck() {
+  const id = await workflowId();
+  const r = await fetch(
+    `https://api.github.com/repos/${cfg().owner}/${cfg().repo}` +
+    `/actions/workflows/${id}/dispatches`,
+    { method: "POST", headers: gh(), body: JSON.stringify({ ref: "main" }) });
+  if (r.status === 204) return true;
+  if (r.status === 403)
+    throw new Error("Token braucht die Berechtigung 'Actions: Read and write'.");
+  if (r.status === 422)
+    throw new Error("Workflow gefunden, aber Branch 'main' passt nicht.");
+  throw new Error("Workflow-Start: HTTP " + r.status);
 }
 
 async function save() {
@@ -588,8 +506,6 @@ async function runCheckNow(silent) {
                                    : "Check beendet, aber mit Fehlern ⚠️",
           conclusion !== "success");
     await loadAll();
-    const fails = items.filter(x => (hist[x.url] || {}).status === "fail");
-    if (fails.length) showFailModal(fails);
   } else {
     toast("Check dauert ungewöhnlich lange – gleich mal ↻ tippen", true);
     updateCheckInfo();
