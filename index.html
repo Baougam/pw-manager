@@ -144,6 +144,8 @@
     <div><label>Zielpreis €</label>
       <input id="newTarget" inputmode="decimal" placeholder="29.90"></div>
   </div>
+  <label>Nur dieser Händler (optional, für Geizhals-Links – z.B. "amazon")</label>
+  <input id="newMerchant" placeholder="leer = günstigster Händler">
   <button class="primary" id="addBtn">Hinzufügen</button>
 </div>
 
@@ -237,6 +239,10 @@ function render() {
         <a href="${it.url}" target="_blank" rel="noopener">${it.label || it.url}</a>
         <small>Ziel <input class="target-in" inputmode="decimal"
                value="${it.target ?? ""}" placeholder="–">
+               ${(it.merchant || /geizhals/i.test(it.url))
+                 ? `&nbsp;Händler <input class="target-in merchant-in" style="width:92px"
+                    value="${it.merchant || ""}" placeholder="alle">`
+                 : ""}
                · ${h.checked || "noch nie geprüft"}</small>
       </span>
       <span class="price">${price}<small>${h.price != null && it.target != null
@@ -244,6 +250,13 @@ function render() {
       <button class="del" title="Entfernen">✕</button>`;
     row.querySelector(".del").onclick = () => {
       items.splice(i, 1); setDirty(true); render();
+    };
+    const mIn = row.querySelector(".merchant-in");
+    if (mIn) mIn.oninput = ev => {
+      const v = ev.target.value.trim().toLowerCase();
+      if (v === "") delete it.merchant;
+      else it.merchant = v;
+      setDirty(true);
     };
     row.querySelector(".target-in").oninput = ev => {
       const v = ev.target.value.trim().replace(",", ".");
@@ -263,8 +276,11 @@ function addItem() {
   if (label) it.label = label;
   const t = $("newTarget").value.trim().replace(",", ".");
   if (t && !isNaN(parseFloat(t))) it.target = parseFloat(t);
+  const mch = $("newMerchant").value.trim();
+  if (mch) it.merchant = mch.toLowerCase();
   items.push(it);
   $("newUrl").value = $("newLabel").value = $("newTarget").value = "";
+  $("newMerchant").value = "";
   setDirty(true); render();
   toast("Hinzugefügt – unten speichern");
 }
